@@ -1,32 +1,52 @@
-import asyncio, os
+import asyncio, os, requests
 from telegram import Bot
-from telegram.error import RetryAfter
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CANAL_ID = os.environ.get("CANAL_ID")
 AFILIADO = "gamer-a4609b2"
 bot = Bot(token=TOKEN)
 
-async def enviar_seguro(texto):
-    while True:
-        try:
-            await bot.send_message(CANAL_ID, text=texto)
-            print(f"Enviado: {texto[:20]}")
-            return True
-        except RetryAfter as e:
-            print(f"Telegram me frenó, espero {e.retry_after} seg")
-            await asyncio.sleep(e.retry_after + 2)
-        except Exception as e:
-            print(f"Error: {e}")
-            await asyncio.sleep(5)
-            return False
+async def enviar(texto):
+    try:
+        await bot.send_message(chat_id=CANAL_ID, text=texto)
+        print("OK enviado")
+        return True
+    except Exception as e:
+        print(f"ERROR enviando: {e}")
+        return False
 
-async def revisar():
-    juegos = ["Red Dead Redemption 2", "Cyberpunk 2077", "Elden Ring", "GTA V", "The Witcher 3"]
-    for nombre in juegos:
-        link = f"https://www.instant-gaming.com/es/buscar/?q={nombre.replace(' ', '+')}&igr={AFILIADO}"
-        msg = f"🔥 {nombre}\n💸 Más barato: {link}"
-        await enviar_seguro(msg)
-        await asyncio.sleep(7) # 7 segundos entre cada uno para que no te banee
+async def main():
+    print(f"Iniciando para canal {CANAL_ID}")
+    
+    # 3 baratos Steam
+    try:
+        r = requests.get("https://www.cheapshark.com/api/1.0/deals?storeID=1&upperPrice=15&pageSize=3", timeout=15).json()
+        for d in r:
+            nombre = d['title']
+            link = f"https://www.instant-gaming.com/es/buscar/?q={nombre.replace(' ', '+')}&igr={AFILIADO}"
+            msg = f"🔥 {nombre} {int(float(d['savings']))}% OFF\n${d['normalPrice']} -> ${d['salePrice']}\n👉 Steam: https://store.steampowered.com/app/{d['steamAppID']}/\n💸 Más barato: {link}"
+            await enviar(msg)
+            await asyncio.sleep(8)
+    except Exception as e:
+        print(f"Fallo ofertas: {e}")
 
-asyncio.run(revisar())
+    # 2 gratis Epic
+    try:
+        r = requests.get("https://store-site-backend-static.ak.epicgames.com/freeGamesPromos?locale=es-ES&country=CL", timeout=15).json()
+        elementos = r['data']['Catalog']['searchStore']['elements']
+        c = 0
+        for j in elementos:
+            if c >= 2: break
+            if j.get('promotions') and j['promotions']['promotionalOffers']:
+                t = j['title']
+                link = f"https://www.instant-gaming.com/es/buscar/?q={t.replace(' ', '+')}&igr={AFILIADO}"
+                msg = f"🎮 ¡GRATIS! {t}\n💸 Versión barata Steam: {link}"
+                await enviar(msg)
+                c+=1
+                await asyncio.sleep(8)
+    except Exception as e:
+        print(f"Fallo gratis: {e}")
+
+    print("FIN TOTAL")
+
+asyncio.run(main())
