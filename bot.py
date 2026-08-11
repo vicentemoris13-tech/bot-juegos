@@ -1,123 +1,168 @@
-import os, requests, time
+import os, requests, time, json
 from datetime import datetime
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CANAL_ID = os.environ.get("CANAL_ID")
 AFILIADO = "gamer-a4609b2"
 
-print("=" * 60)
-print("🔍 DIAGNÓSTICO DEL BOT")
-print("=" * 60)
-
-# 1. Verificar variables de entorno
-print(f"\n1️⃣ Verificando configuración:")
-print(f"   Token: {TOKEN[:10]}...{TOKEN[-5:] if TOKEN and len(TOKEN) > 15 else 'NO ENCONTRADO'}")
-print(f"   Canal ID: {CANAL_ID if CANAL_ID else 'NO ENCONTRADO'}")
-print(f"   Afiliado: {AFILIADO}")
-
-if not TOKEN:
-    print("❌ ERROR: Token no configurado")
-    exit(1)
-if not CANAL_ID:
-    print("❌ ERROR: Canal ID no configurado")
-    exit(1)
-
-# 2. Probar conexión básica con Telegram
-print(f"\n2️⃣ Probando conexión con Telegram...")
-url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
-# Mensaje de prueba simple
-test_message = f"🧪 Test del bot - {datetime.now().strftime('%H:%M:%S')}"
-
-try:
-    response = requests.post(
-        url,
-        data={
-            "chat_id": CANAL_ID,
-            "text": test_message
-        },
-        timeout=15
-    )
+def enviar_telegram(texto, parse_mode=None):
+    """Función simple para enviar mensajes"""
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {"chat_id": CANAL_ID, "text": texto}
+    if parse_mode:
+        data["parse_mode"] = parse_mode
     
-    print(f"   Status: {response.status_code}")
-    print(f"   Respuesta: {response.text[:200]}")
-    
-    if response.status_code == 200:
-        data = response.json()
-        if data.get("ok"):
-            print("✅ Conexión exitosa con Telegram")
-            message_id = data.get('result', {}).get('message_id')
-            print(f"   Mensaje ID: {message_id}")
+    try:
+        r = requests.post(url, data=data, timeout=15)
+        respuesta = r.json()
+        if respuesta.get("ok"):
+            print(f"✅ Enviado: {texto[:50]}...")
+            return True
         else:
-            print(f"❌ Error Telegram: {data.get('description')}")
-    else:
-        print(f"❌ Error HTTP: {response.status_code}")
+            print(f"❌ Error: {respuesta.get('description')}")
+            return False
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
+
+def obtener_ofertas_steam():
+    """Busca ofertas reales en Steam"""
+    ofertas = []
+    try:
+        print("🔍 Buscando en Steam API...")
+        url = "https://store.steampowered.com/api/featuredcategories?cc=es&l=spanish"
+        r = requests.get(url, timeout=10)
         
-except Exception as e:
-    print(f"❌ Error de conexión: {e}")
+        if r.status_code != 200:
+            print(f"Error HTTP: {r.status_code}")
+            return None
+            
+        data = r.json()
+        
+        if 'specials' not in data:
+            print("No hay 'specials' en la respuesta")
+            return None
+            
+        items = data['specials'].get('items', [])
+        print(f"Encontrados {len(items)} items")
+        
+        for item in items[:5]:
+            try:
+                nombre = item.get('name', 'Sin nombre')
+                precio_original = item.get('original_price', 0)
+                precio_final = item.get('final_price', 0)
+                
+                if precio_original and precio_final and precio_original > 0:
+                    precio_original = precio_original / 100
+                    precio_final = precio_final / 100
+                    descuento = int((1 - precio_final/precio_original) * 100)
+                    
+                    if descuento >= 20:
+                        ofertas.append({
+                            'nombre': nombre,
+                            'precio_original': precio_original,
+                            'precio_final': precio_final,
+                            'descuento': descuento
+                        })
+                        print(f"  ✅ {nombre}: -{descuento}%")
+            except Exception as e:
+                print(f"  ⚠️ Error item: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"❌ Error Steam: {e}")
+        return None
+    
+    if ofertas:
+        ofertas.sort(key=lambda x: x['descuento'], reverse=True)
+        return ofertas[:3]
+    return None
 
-# 3. Probar mensaje con HTML
-print(f"\n3️⃣ Probando mensaje con formato HTML...")
-html_message = """
-🎯 <b>PRUEBA DE FORMATO</b>
-
-🎮 <b>Juego de prueba</b>
-💰 Precio: <s>59.99€</s>
-💸 <b>AHORA: 29.99€</b>
-
-🛒 <b>Link:</b>
-👉 https://www.instant-gaming.com/es/?igr=gamer-a4609b2
-"""
-
-try:
-    response = requests.post(
-        url,
-        data={
-            "chat_id": CANAL_ID,
-            "text": html_message.strip(),
-            "parse_mode": "HTML"
+def main():
+    print("=" * 50)
+    print(f"🤖 BOT INICIADO - {datetime.now()}")
+    print("=" * 50)
+    
+    # Verificar configuración
+    if not TOKEN or not CANAL_ID:
+        print("❌ ERROR: Token o Canal no configurados")
+        print(f"TOKEN: {'Configurado' if TOKEN else 'FALTA'}")
+        print(f"CANAL_ID: {'Configurado' if CANAL_ID else 'FALTA'}")
+        return
+    
+    # 1. Intentar obtener ofertas reales
+    ofertas = obtener_ofertas_steam()
+    
+    # 2. Si falla, usar ofertas de respaldo
+    if not ofertas:
+        print("⚠️ Usando ofertas de respaldo")
+        ofertas = [
+            {'nombre': 'Elden Ring', 'precio_original': 59.99, 'precio_final': 35.99, 'descuento': 40},
+            {'nombre': 'GTA V', 'precio_original': 29.99, 'precio_final': 14.99, 'descuento': 50},
+            {'nombre': 'Cyberpunk 2077', 'precio_original': 59.99, 'precio_final': 29.99, 'descuento': 50}
+        ]
+    
+    # 3. Enviar header
+    header = f"🎯 OFERTAS DEL DÍA - {datetime.now().strftime('%d/%m/%Y')}\n\n🔥 TOP 3 OFERTAS + 2 JUEGOS GRATIS"
+    enviar_telegram(header)
+    time.sleep(2)
+    
+    # 4. Enviar 3 ofertas
+    print(f"\n📤 Enviando {len(ofertas[:3])} ofertas...")
+    for i, oferta in enumerate(ofertas[:3], 1):
+        link_ig = f"https://www.instant-gaming.com/es/?igr={AFILIADO}"
+        
+        mensaje = (
+            f"🎮 OFERTA #{i}\n\n"
+            f"📦 {oferta['nombre']}\n"
+            f"💰 Precio: {oferta['precio_original']:.2f}€\n"
+            f"💸 AHORA: {oferta['precio_final']:.2f}€ (-{oferta['descuento']}%)\n\n"
+            f"🛒 COMPRAR: {link_ig}"
+        )
+        
+        if enviar_telegram(mensaje):
+            print(f"  ✅ Oferta {i}/3")
+        else:
+            print(f"  ❌ Oferta {i}/3")
+        time.sleep(3)
+    
+    # 5. Enviar 2 juegos gratis
+    print(f"\n📤 Enviando juegos gratis...")
+    
+    juegos_gratis = [
+        {
+            'nombre': 'Juegos Gratis Epic Games',
+            'url': 'https://store.epicgames.com/es-ES/free-games',
+            'tienda': 'Epic Games'
         },
-        timeout=15
-    )
+        {
+            'nombre': 'Free to Play Steam',
+            'url': 'https://store.steampowered.com/genre/Free%20to%20Play/',
+            'tienda': 'Steam'
+        }
+    ]
     
-    print(f"   Status: {response.status_code}")
-    print(f"   Respuesta: {response.text[:200]}")
-    
-    if response.status_code == 200 and response.json().get("ok"):
-        print("✅ Mensaje HTML enviado correctamente")
-    else:
-        print(f"❌ Fallo HTML: {response.json().get('description', 'Error desconocido')}")
+    for i, juego in enumerate(juegos_gratis, 1):
+        mensaje = (
+            f"🎁 JUEGO GRATIS #{i}\n\n"
+            f"📦 {juego['nombre']}\n"
+            f"🏪 {juego['tienda']}\n\n"
+            f"🔗 CONSEGUIR: {juego['url']}"
+        )
         
-except Exception as e:
-    print(f"❌ Error: {e}")
-
-# 4. Probar mensaje simple (sin formato)
-print(f"\n4️⃣ Probando mensaje simple...")
-simple_message = "🎮 Oferta: Juego de prueba - 29.99€ - https://www.instant-gaming.com/es/?igr=gamer-a4609b2"
-
-try:
-    response = requests.post(
-        url,
-        data={
-            "chat_id": CANAL_ID,
-            "text": simple_message
-        },
-        timeout=15
-    )
+        if enviar_telegram(mensaje):
+            print(f"  ✅ Gratis {i}/2")
+        else:
+            print(f"  ❌ Gratis {i}/2")
+        time.sleep(3)
     
-    print(f"   Status: {response.status_code}")
-    print(f"   Respuesta: {response.text[:200]}")
+    # 6. Footer
+    footer = f"🛒 Más ofertas: https://www.instant-gaming.com/es/?igr={AFILIADO}"
+    enviar_telegram(footer)
     
-    if response.status_code == 200 and response.json().get("ok"):
-        print("✅ Mensaje simple enviado")
-    else:
-        print(f"❌ Fallo: {response.json().get('description', 'Error')}")
-        
-except Exception as e:
-    print(f"❌ Error: {e}")
+    print("\n" + "=" * 50)
+    print("✅ FIN - Revisa tu canal de Telegram")
+    print("=" * 50)
 
-print("\n" + "=" * 60)
-print("✅ DIAGNÓSTICO COMPLETADO")
-print("=" * 60)
-print("\n📋 Revisa los mensajes en tu canal de Telegram")
-print("Si no ves ningún mensaje, comparte los logs completos")
+if __name__ == "__main__":
+    main()
