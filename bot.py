@@ -3,7 +3,7 @@ from telegram import Bot
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CANAL_ID = os.environ.get("CANAL_ID")
-AFILIADO = "gamer-a4609b2" # tu codigo
+AFILIADO = "link_ig = f"https://www.instant-gaming.com/?igr={AFILIADO}" # tu codigo
 
 bot = Bot(token=TOKEN)
 
