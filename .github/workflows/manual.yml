@@ -3,7 +3,6 @@ on:
   schedule:
     - cron: '0 12 * * *'
   workflow_dispatch:
-
 jobs:
   bot:
     runs-on: ubuntu-latest
